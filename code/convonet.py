@@ -33,8 +33,13 @@ print(theano.config.floatX) # Should be 64 bit for CPUs
 
 np.random.seed(0)
 
+print(theano.config.device) # We're using CPUs (for now)
+print(theano.config.floatX) # Should be 64 bit for CPUs
+
+np.random.seed(0)
+
 #### Constants
-GPU = False
+GPU = True
 if GPU:
     print("Trying to run under a GPU.  If this is not desired, then set the GPU flag to False.")
     try: theano.config.device = 'gpu'
@@ -43,8 +48,11 @@ if GPU:
 else:
     print ("Running with a CPU.  If this is not desired, then set the GPU flag to True.")
 
-training_file_name = 'C:\\Megan\\Education\\Berkeley\\W207\\HW\\FinalProject-NN\\training.csv'
-test_file_name = 'C:\Megan\Education\Berkeley\W207\HW\FinalProject-NN\w207-Final-Project\data\test.csv'
+#training_file_name = 'C:\\Megan\\Education\\Berkeley\\W207\\HW\\FinalProject-NN\\training.csv'
+#test_file_name = 'C:\Megan\Education\Berkeley\W207\HW\FinalProject-NN\w207-Final-Project\data\test.csv'
+
+training_file_name = '//data//w207-Final-Project//data//training.csv'
+test_file_name = '//data//w207-Final-Project//data//test.csv'
 
 #training data:  7049 rows x 31 columns
 # load pandas dataframe
@@ -130,39 +138,7 @@ def plot_samples(num_samples, X_images, Y_pred):
         plot_sample(X_images[i], Y_pred[i], ax)
 
     plt.show()
-
-# Baseline:  use the means of the training data
-start_time = time.time()
-mean_labels = np.asarray(np.mean(train_labels, axis=0))
-predict =[]
-for i in range(dev_labels.shape[0]):
-    predict.append(mean_labels)
-predict = np.asarray(predict)
-print('Train time = %.2f' %(time.time() - start_time))
-start_time = time.time()
-RMSE_score = RMSE(dev_labels, predict)
-print('RMSE = %.4f' %(RMSE_score))
-print('Prediction time = %.2f' %(time.time() - start_time))
-#print(predict)
-#print()
-#print(dev_labels)
-plot_samples(16, dev_data, predict)
-
-# Baseline:  use linear regression
-lm = LinearRegression()
-start_time = time.time()
-lm.fit(train_data, train_labels)
-print('Train time = %.2f' %(time.time() - start_time))
-start_time = time.time()
-accuracy = lm.score(dev_data, dev_labels)
-RMSE_score = RMSE(dev_labels, lm.predict(dev_data))
-print('Accuracy = %.4f' %(accuracy))
-print('RMSE = %.4f' %(RMSE_score))
-print('Prediction time = %.2f' %(time.time() - start_time))
-#print(lm.predict(dev_data))
-#print()
-#print(dev_labels)
-plot_samples(16, dev_data, lm.predict(dev_data))
+    
 
 # Adding convolutional layers
 
@@ -172,12 +148,12 @@ numFeatures = train_data.shape[1]
 numClasses = train_labels.shape[1]
 
 ## (1) Parameters
-numHiddenNodes = 100 
+numHiddenNodes = 500 
 patchWidth = 3
 patchHeight = 3
-featureMapsLayer1 = 16
-featureMapsLayer2 = 16
-featureMapsLayer3 = 16
+featureMapsLayer1 = 32
+featureMapsLayer2 = 64
+featureMapsLayer3 = 128
 
 # For convonets, we will work in 2d rather than 1d.  The images are 96x96 in 2d.
 imageWidth = 96
@@ -191,7 +167,7 @@ w_2 = theano.shared(np.asarray((np.random.randn(*(featureMapsLayer2, featureMaps
 w_3 = theano.shared(np.asarray((np.random.randn(*(featureMapsLayer3, featureMapsLayer2, patchWidth, patchHeight))*.01)))
 
 # Fully connected NN. 
-w_4 = theano.shared(np.asarray((np.random.randn(*(featureMapsLayer3 * 11 * 11, numHiddenNodes))*.01)))
+w_4 = theano.shared(np.asarray((np.random.randn(*(featureMapsLayer3 * 10 * 10, numHiddenNodes))*.01)))
 w_5 = theano.shared(np.asarray((np.random.randn(*(numHiddenNodes, numClasses))*.01)))
 params = [w_1, w_2, w_3, w_4, w_5]
 
@@ -213,9 +189,9 @@ def dropout(X, p=0.):
 
 # Theano provides built-in support for add convolutional layers
 def model(X, w_1, w_2, w_3, w_4, w_5, p_1, p_2):
-    l1 = dropout(max_pool_2d(T.maximum(conv2d(X, w_1, border_mode='full'),0.), (2, 2)), p_1)
-    l2 = dropout(max_pool_2d(T.maximum(conv2d(l1, w_2), 0.), (2, 2)), p_1)
-    l3 = dropout(T.flatten(max_pool_2d(T.maximum(conv2d(l2, w_3), 0.), (2, 2)), outdim=2), p_1) # flatten to switch back to 1d layers
+    l1 = dropout(max_pool_2d(T.maximum(conv2d(X, w_1, border_mode='full'),0.), (2, 2), ignore_border=True), p_1)
+    l2 = dropout(max_pool_2d(T.maximum(conv2d(l1, w_2), 0.), (2, 2), ignore_border=True), p_1)
+    l3 = dropout(T.flatten(max_pool_2d(T.maximum(conv2d(l2, w_3), 0.), (2, 2), ignore_border=True), outdim=2), p_1) # flatten to switch back to 1d layers
     l4 = dropout(T.maximum(T.dot(l3, w_4), 0.), p_2)
     return T.dot(l4, w_5)
 
@@ -230,7 +206,7 @@ y_hat_predict = model(X, w_1, w_2, w_3, w_4, w_5, 0., 0.)
 cost = MSE_tensor(Y, y_hat_train)
 
 ## (4) Minimization.  Update rule changes to backpropagation.
-def backprop(cost, w, alpha=0.001, rho=0.9, epsilon=1e-6):
+def backprop(cost, w, alpha=0.01, rho=0.9, epsilon=1e-6):
     grads = T.grad(cost=cost, wrt=w)
     updates = []
     for w1, grad in zip(w, grads):
@@ -266,11 +242,10 @@ def gradientDescentStochastic(epochs):
         print('%d) RMSE = %.4f, T_MSE = %.4f, D_MSE = %.4f, T_MSE/D_MSE = %.4f' % (i+1, D_RMSE, T_MSE, D_MSE, T_MSE/D_MSE))
     print('train time = %.2f' %(trainTime))
 
-gradientDescentStochastic(1)
+gradientDescentStochastic(400)
 
 start_time = time.time()
-plot_samples(16, dev_data_2d, predict(dev_data_2d))
-# predict(test_data) ??am I doing test_data or dev_data here
+#plot_samples(16, dev_data_2d, predict(dev_data_2d))
 print(predict(dev_data_2d))
 print()
 print(dev_labels)  
